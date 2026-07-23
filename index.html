@@ -131,11 +131,12 @@
         <input 
           type="url" 
           id="webhookUrl" 
-          placeholder="https://your-n8n-instance.com/webhook/resume-screening" 
+          placeholder="https://nirajshevade.app.n8n.cloud/webhook/resume-screening" 
+          value="https://nirajshevade.app.n8n.cloud/webhook/resume-screening"
           required 
         />
         <small style="display:block;margin-top:6px;color:#64748b;font-size:0.8rem;">
-          Use the production URL above for a live submission. `webhook-test` only works while the workflow is actively listening in n8n.
+          Make sure your workflow toggle switch in n8n is set to <strong>Active</strong>.
         </small>
       </div>
 
@@ -161,41 +162,67 @@
   </div>
 
   <script>
-  const form = document.getElementById('resumeForm'); // Ensure this ID matches your <form id="...">
+    const form = document.getElementById('resumeForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const statusDiv = document.getElementById('status');
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-    // 1. Gather form input elements
-    const fileInput = document.getElementById('resume');
-    const nameInput = document.getElementById('name');
-    const emailInput = document.getElementById('email');
-    const webhookInput = document.getElementById('webhookUrl');
+      // UI Loading state
+      statusDiv.style.display = 'none';
+      statusDiv.className = '';
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Uploading...';
 
-    // 2. Build Multipart FormData
-    const formData = new FormData();
-    formData.append('resume', fileInput.files[0]);
-    formData.append('candidateName', nameInput.value);
-    formData.append('candidateEmail', emailInput.value);
+      // 1. Get form inputs
+      const fileInput = document.getElementById('resume');
+      const nameInput = document.getElementById('name');
+      const emailInput = document.getElementById('email');
+      const webhookInput = document.getElementById('webhookUrl');
 
-    // 3. Select the Webhook URL
-    const rawWebhookUrl = webhookInput.value.trim().replace('/webhook-test/', '/webhook/');
-    const n8nWebhookUrl = rawWebhookUrl;
+      if (!fileInput.files || fileInput.files.length === 0) {
+        alert('Please select a PDF file first.');
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Send to n8n Workflow';
+        return;
+      }
 
-    try {
-      const response = await fetch(n8nWebhookUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: formData
-      });
+      // 2. Build FormData
+      const formData = new FormData();
+      // Binary key MUST be 'data' to match n8n's 'Field Name for Binary Data'
+      formData.append('data', fileInput.files[0]); 
+      formData.append('candidateName', nameInput.value);
+      formData.append('candidateEmail', emailInput.value);
 
-      alert('Resume submitted successfully! Check the n8n execution log to confirm processing.');
-    } catch (err) {
-      console.error('Fetch Error:', err);
-      alert('Failed to connect to n8n webhook.');
-    }
-  });
-</script>
+      // 3. Webhook URL
+      const n8nWebhookUrl = webhookInput.value.trim();
+
+      try {
+        const response = await fetch(n8nWebhookUrl, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          statusDiv.innerText = 'Resume submitted successfully! Check n8n execution log.';
+          statusDiv.className = 'status-success';
+          statusDiv.style.display = 'block';
+          form.reset();
+        } else {
+          throw new Error(`Server responded with HTTP ${response.status}`);
+        }
+      } catch (err) {
+        console.error('Fetch Error:', err);
+        statusDiv.innerText = 'Error sending to webhook: ' + err.message;
+        statusDiv.className = 'status-error';
+        statusDiv.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Send to n8n Workflow';
+      }
+    });
+  </script>
 
 </body>
 </html>
