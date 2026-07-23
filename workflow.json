@@ -1,0 +1,374 @@
+{
+  "name": "AI Resume Screening Workflow",
+  "nodes": [
+    {
+      "id": "n1",
+      "name": "Webhook - Receive Resume PDF",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "resume-screening",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "resume-screening-webhook"
+    },
+    {
+      "id": "n2",
+      "name": "Extract Resume Text (PDF)",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "resume",
+        "options": {}
+      }
+    },
+    {
+      "id": "n3",
+      "name": "Set Job Description",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "resumeText",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "jobDescription",
+              "value": "PASTE_YOUR_JOB_DESCRIPTION_HERE",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "candidateName",
+              "value": "={{ $json.body.candidateName }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "candidateEmail",
+              "value": "={{ $json.body.candidateEmail }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n4",
+      "name": "Gemini AI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [ { parts: [ { text: \"You are an expert technical recruiter. Compare the resume to the job description and return ONLY valid JSON (no markdown, no code fences) with keys: score (integer 0-100), matchedSkills (array of strings), missingSkills (array of strings), summary (string, max 40 words).\\n\\nJOB DESCRIPTION:\\n\" + $json.jobDescription + \"\\n\\nRESUME:\\n\" + $json.resumeText } ] } ], generationConfig: { responseMimeType: \"application/json\" } }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Gemini API Key"
+        }
+      }
+    },
+    {
+      "id": "n5",
+      "name": "Parse JSON Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nlet text = '';\ntry {\n  text = response.candidates[0].content.parts[0].text;\n} catch (e) {\n  text = '{}';\n}\ntext = text.replace(/```json/g, '').replace(/```/g, '').trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(text);\n} catch (e) {\n  parsed = { score: 0, matchedSkills: [], missingSkills: [], summary: 'Failed to parse AI response' };\n}\n\nconst upstream = $('Set Job Description').first().json;\n\nreturn [{\n  json: {\n    candidateName: upstream.candidateName,\n    candidateEmail: upstream.candidateEmail,\n    jobDescription: upstream.jobDescription,\n    score: parsed.score,\n    matchedSkills: parsed.matchedSkills || [],\n    missingSkills: parsed.missingSkills || [],\n    summary: parsed.summary || ''\n  }\n}];"
+      }
+    },
+    {
+      "id": "n6",
+      "name": "IF Score > 75",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 75,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n7",
+      "name": "Google Sheets - Selected",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1560, 160],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Candidates",
+          "mode": "list",
+          "cachedResultName": "Candidates"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["Email"],
+          "value": {
+            "Name": "={{ $json.candidateName }}",
+            "Email": "={{ $json.candidateEmail }}",
+            "Score": "={{ $json.score }}",
+            "Status": "Selected",
+            "MatchedSkills": "={{ $json.matchedSkills.join(', ') }}",
+            "MissingSkills": "={{ $json.missingSkills.join(', ') }}",
+            "Summary": "={{ $json.summary }}",
+            "Timestamp": "={{ $now.toISO() }}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "n8",
+      "name": "Google Sheets - Rejected",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1560, 440],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Candidates",
+          "mode": "list",
+          "cachedResultName": "Candidates"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["Email"],
+          "value": {
+            "Name": "={{ $json.candidateName }}",
+            "Email": "={{ $json.candidateEmail }}",
+            "Score": "={{ $json.score }}",
+            "Status": "Rejected",
+            "MatchedSkills": "={{ $json.matchedSkills.join(', ') }}",
+            "MissingSkills": "={{ $json.missingSkills.join(', ') }}",
+            "Summary": "={{ $json.summary }}",
+            "Timestamp": "={{ $now.toISO() }}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "n9",
+      "name": "Gmail - Selected",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1780, 160],
+      "parameters": {
+        "sendTo": "={{ $json.candidateEmail }}",
+        "subject": "Congratulations! You've been shortlisted",
+        "message": "=Hi {{ $json.candidateName }},<br><br>Great news! Your profile scored {{ $json.score }}/100 against our job requirements and you've been shortlisted for the next round.<br><br>Our team will reach out shortly with next steps.<br><br>Best,<br>HR Team",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "n10",
+      "name": "Gmail - Rejected",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1780, 440],
+      "parameters": {
+        "sendTo": "={{ $json.candidateEmail }}",
+        "subject": "Update on your application",
+        "message": "=Hi {{ $json.candidateName }},<br><br>Thank you for applying. After careful review, we've decided not to move forward with your application at this time.<br><br>We appreciate your interest and encourage you to apply for future openings that match your skills.<br><br>Best,<br>HR Team",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "n11",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2000, 300],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "n12",
+      "name": "HR Dashboard Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2220, 300],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Dashboard",
+          "mode": "list",
+          "cachedResultName": "Dashboard"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.candidateName }}",
+            "Email": "={{ $json.candidateEmail }}",
+            "Score": "={{ $json.score }}",
+            "Status": "={{ $json.score > 75 ? 'Selected' : 'Rejected' }}",
+            "ProcessedAt": "={{ $now.toISO() }}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - Receive Resume PDF": {
+      "main": [
+        [{ "node": "Extract Resume Text (PDF)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Resume Text (PDF)": {
+      "main": [
+        [{ "node": "Set Job Description", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set Job Description": {
+      "main": [
+        [{ "node": "Gemini AI Analysis", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini AI Analysis": {
+      "main": [
+        [{ "node": "Parse JSON Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse JSON Response": {
+      "main": [
+        [{ "node": "IF Score > 75", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Score > 75": {
+      "main": [
+        [{ "node": "Google Sheets - Selected", "type": "main", "index": 0 }],
+        [{ "node": "Google Sheets - Rejected", "type": "main", "index": 0 }]
+      ]
+    },
+    "Google Sheets - Selected": {
+      "main": [
+        [{ "node": "Gmail - Selected", "type": "main", "index": 0 }]
+      ]
+    },
+    "Google Sheets - Rejected": {
+      "main": [
+        [{ "node": "Gmail - Rejected", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gmail - Selected": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gmail - Rejected": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 1 }]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [{ "node": "HR Dashboard Log", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "resume-screening-workflow"
+  }
+}

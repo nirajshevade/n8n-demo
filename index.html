@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Resume Screening Test Form</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .card {
+      background: #ffffff;
+      padding: 32px;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      width: 100%;
+      max-width: 480px;
+    }
+
+    h2 {
+      color: #1e293b;
+      margin-bottom: 8px;
+      font-size: 1.5rem;
+    }
+
+    p.subtitle {
+      color: #64748b;
+      font-size: 0.875rem;
+      margin-bottom: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="url"],
+    input[type="file"] {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    input[type="url"]:focus,
+    input[type="file"]:focus {
+      border-color: #ff6d5a; /* n8n primary brand color theme */
+    }
+
+    button {
+      width: 100%;
+      background-color: #ff6d5a;
+      color: white;
+      border: none;
+      padding: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      background-color: #e05543;
+    }
+
+    button:disabled {
+      background-color: #cbd5e1;
+      cursor: not-allowed;
+    }
+
+    #status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      display: none;
+      text-align: center;
+    }
+
+    .status-success {
+      background-color: #dcfce7;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+
+    .status-error {
+      background-color: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Submit Resume</h2>
+    <p class="subtitle">Test your n8n AI Resume Screening Workflow</p>
+
+    <form id="resumeForm">
+      <div class="form-group">
+        <label for="webhookUrl">n8n Webhook URL</label>
+        <input 
+          type="url" 
+          id="webhookUrl" 
+          placeholder="https://your-n8n-instance.com/webhook-test/..." 
+          required 
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="name">Candidate Full Name</label>
+        <input type="text" id="name" placeholder="John Doe" required />
+      </div>
+
+      <div class="form-group">
+        <label for="email">Candidate Email</label>
+        <input type="email" id="email" placeholder="john@example.com" required />
+      </div>
+
+      <div class="form-group">
+        <label for="resume">Upload Resume (PDF)</label>
+        <input type="file" id="resume" accept=".pdf" required />
+      </div>
+
+      <button type="submit" id="submitBtn">Send to n8n Workflow</button>
+    </form>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById('resumeForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const statusDiv = document.getElementById('status');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const webhookUrl = document.getElementById('webhookUrl').value;
+      const name = document.getElementById('name').value;
+      const email = document.getElementById('email').value;
+      const resumeFile = document.getElementById('resume').files[0];
+
+      // Prepare form data
+      const formData = new FormData();
+      formData.append('data', resumeFile);    // Binary PDF field key expected by n8n
+      formData.append('resume', resumeFile);  // Fallback key if using the second JSON schema
+      formData.append('name', name);
+      formData.append('email', email);
+      formData.append('candidateName', name);
+      formData.append('candidateEmail', email);
+
+      // Reset status UI
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Processing...';
+      statusDiv.style.display = 'none';
+
+      try {
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          statusDiv.className = 'status-success';
+          statusDiv.textContent = ' Successfully sent to n8n! Check your workflow execution logs.';
+        } else {
+          throw new Error(`Server returned status code ${response.status}`);
+        }
+      } catch (error) {
+        statusDiv.className = 'status-error';
+        statusDiv.textContent = ' Error sending to webhook: ' + error.message;
+      } finally {
+        statusDiv.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send to n8n Workflow';
+      }
+    });
+  </script>
+
+</body>
+</html>
