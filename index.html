@@ -190,8 +190,8 @@
 
       // 2. Build FormData
       const formData = new FormData();
-      // Binary key MUST be 'data' to match n8n's 'Field Name for Binary Data'
-      formData.append('data', fileInput.files[0]); 
+      // Binary key must match the workflow's PDF extractor field.
+      formData.append('resume', fileInput.files[0]); 
       formData.append('candidateName', nameInput.value);
       formData.append('candidateEmail', emailInput.value);
 
