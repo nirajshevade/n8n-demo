@@ -131,9 +131,12 @@
         <input 
           type="url" 
           id="webhookUrl" 
-          placeholder="https://your-n8n-instance.com/webhook-test/..." 
+          placeholder="https://your-n8n-instance.com/webhook/resume-screening" 
           required 
         />
+        <small style="display:block;margin-top:6px;color:#64748b;font-size:0.8rem;">
+          Use the production URL above for a live submission. `webhook-test` only works while the workflow is actively listening in n8n.
+        </small>
       </div>
 
       <div class="form-group">
@@ -158,54 +161,41 @@
   </div>
 
   <script>
-    const form = document.getElementById('resumeForm');
-    const submitBtn = document.getElementById('submitBtn');
-    const statusDiv = document.getElementById('status');
+  const form = document.getElementById('resumeForm'); // Ensure this ID matches your <form id="...">
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-      const webhookUrl = document.getElementById('webhookUrl').value;
-      const name = document.getElementById('name').value;
-      const email = document.getElementById('email').value;
-      const resumeFile = document.getElementById('resume').files[0];
+    // 1. Gather form input elements
+    const fileInput = document.getElementById('resume');
+    const nameInput = document.getElementById('name');
+    const emailInput = document.getElementById('email');
+    const webhookInput = document.getElementById('webhookUrl');
 
-      // Prepare form data
-      const formData = new FormData();
-      formData.append('data', resumeFile);    // Binary PDF field key expected by n8n
-      formData.append('resume', resumeFile);  // Fallback key if using the second JSON schema
-      formData.append('name', name);
-      formData.append('email', email);
-      formData.append('candidateName', name);
-      formData.append('candidateEmail', email);
+    // 2. Build Multipart FormData
+    const formData = new FormData();
+    formData.append('resume', fileInput.files[0]);
+    formData.append('candidateName', nameInput.value);
+    formData.append('candidateEmail', emailInput.value);
 
-      // Reset status UI
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Processing...';
-      statusDiv.style.display = 'none';
+    // 3. Select the Webhook URL
+    const rawWebhookUrl = webhookInput.value.trim().replace('/webhook-test/', '/webhook/');
+    const n8nWebhookUrl = rawWebhookUrl;
 
-      try {
-        const response = await fetch(webhookUrl, {
-          method: 'POST',
-          body: formData,
-        });
+    try {
+      const response = await fetch(n8nWebhookUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: formData
+      });
 
-        if (response.ok) {
-          statusDiv.className = 'status-success';
-          statusDiv.textContent = ' Successfully sent to n8n! Check your workflow execution logs.';
-        } else {
-          throw new Error(`Server returned status code ${response.status}`);
-        }
-      } catch (error) {
-        statusDiv.className = 'status-error';
-        statusDiv.textContent = ' Error sending to webhook: ' + error.message;
-      } finally {
-        statusDiv.style.display = 'block';
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Send to n8n Workflow';
-      }
-    });
-  </script>
+      alert('Resume submitted successfully! Check the n8n execution log to confirm processing.');
+    } catch (err) {
+      console.error('Fetch Error:', err);
+      alert('Failed to connect to n8n webhook.');
+    }
+  });
+</script>
 
 </body>
 </html>
